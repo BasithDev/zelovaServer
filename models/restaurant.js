@@ -63,4 +63,7 @@ const restaurantSchema = new Schema({
   timestamps: true,
 });
 
+// Add 2dsphere index for geospatial queries
+restaurantSchema.index({ location: "2dsphere" });
+
 module.exports = mongoose.model("Restaurant", restaurantSchema);

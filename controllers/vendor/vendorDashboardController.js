@@ -3,7 +3,7 @@ const Order = require('../../models/orders');
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const Restaurant = require('../../models/restaurant');
-const getRestaurantId = require('../../helpers/getRestaurantId');
+const getRestaurantId = require('../../helpers/restaurantIdHelper');
 const mongoose = require("mongoose");
 
 const getVendorReports = async (req, res, next) => {
@@ -317,20 +317,28 @@ const getVendorDashboardData = async (req, res, next) => {
         const restaurant = await Restaurant.findOne({ _id: restaurantId });
         if (!restaurant) return res.status(statusCodes.NOT_FOUND).json({ error: "Restaurant not found" });
 
-        // Use the provided date
+        // Get start and end of today in IST
         const today = new Date();
+        today.setHours(0, 0, 0, 0); // Start of day in local time
+        
         const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setDate(tomorrow.getDate() + 1); // End of day in local time
 
         const todaysOrdersCount = await Order.countDocuments({ 
             restaurantId, 
-            createdAt: { $gte: today, $lt: tomorrow } 
+            createdAt: { 
+                $gte: today,
+                $lt: tomorrow
+            }
         });
 
         const todaysOrdersPendingCount = await Order.countDocuments({ 
             restaurantId, 
-            status: 'PENDING',
-            createdAt: { $gte: today, $lt: tomorrow } 
+            status: { $ne: 'ORDER ACCEPTED' }, 
+            createdAt: { 
+                $gte: today,
+                $lt: tomorrow
+            }
         });
 
         const totalOrders = await Order.countDocuments({ restaurantId });
