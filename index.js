@@ -46,7 +46,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(compression());
 
 app.use(cors({
-    origin: ["http://localhost:3000","http://localhost:5173","https://api.cloudinary.com"],
+    origin: ["http://zelova.zapto.org","http://localhost:5173","https://api.cloudinary.com"],
     methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
     credentials: true
 }))
