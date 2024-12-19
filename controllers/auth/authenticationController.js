@@ -42,7 +42,7 @@ const login = async (req, res, next) => {
         const tokenName = user.isAdmin ? 'admin_token' : 'user_token';
         const token = jwt.sign(payload, secret, { expiresIn: '3h' });
 
-        res.cookie(tokenName, token, { maxAge: 10800000 });
+        res.cookie(tokenName, token, { maxAge: 10800000, secure: true })
 
         return res.status(statusCodes.OK).json({ 
             status: "Success",
