@@ -2,44 +2,52 @@ const jwt = require('jsonwebtoken');
 
 // Global API protection middleware
 const protectApi = (req, res, next) => {
-    // 1. Check request origin and headers
-    const origin = req.get('origin');
-    const xRequestedWith = req.get('X-Requested-With');
-    const allowedOrigin = process.env.CLIENT_URL || 'http://localhost:5173';
+    // Skip checks for static files and certain paths
+    if (req.path.startsWith('/assets/') || 
+        req.path === '/favicon.ico' || 
+        req.path === '/') {
+        return next();
+    }
 
     // Check if this is a Google auth related endpoint
     const isGoogleAuthEndpoint = req.path.includes('/auth/google') || req.path.includes('/oauth');
-    
-    if (!isGoogleAuthEndpoint) {
-        // 2. Block if not XMLHttpRequest (skip for Google auth)
-        if (xRequestedWith !== 'XMLHttpRequest') {
-            return res.status(403).json({
-                success: false,
-                message: 'Direct API access not allowed'
-            });
-        }
-
-        // 4. Check for custom application header (skip for Google auth)
-        const appToken = req.get('X-App-Token');
-        if (!appToken || appToken !== process.env.APP_SECRET) {
-            return res.status(403).json({
-                success: false,
-                message: 'Invalid application token'
-            });
-        }
+    if (isGoogleAuthEndpoint) {
+        return next();
     }
 
-    // 3. Validate origin in production only
-    const allowedOrigins = [
-        allowedOrigin,
-        'https://accounts.google.com',
-        'https://oauth2.googleapis.com'
+    // Skip checks for public endpoints
+    const publicEndpoints = [
+        '/auth/login',
+        '/auth/register',
+        '/auth/verify-otp',
+        '/auth/resend-otp',
+        '/user/status'
     ];
 
-    if (origin && !allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+    if (publicEndpoints.some(endpoint => req.path.includes(endpoint))) {
+        return next();
+    }
+
+    // For other API endpoints, check headers
+    const xRequestedWith = req.get('X-Requested-With');
+    const appToken = req.get('X-App-Token');
+    
+    // In development, be more lenient with header checks
+    if (process.env.NODE_ENV === 'development') {
+        return next();
+    }
+
+    if (!xRequestedWith || xRequestedWith !== 'XMLHttpRequest') {
         return res.status(403).json({
             success: false,
-            message: 'Unauthorized origin'
+            message: 'Direct API access not allowed'
+        });
+    }
+
+    if (!appToken || appToken !== process.env.APP_SECRET) {
+        return res.status(403).json({
+            success: false,
+            message: 'Invalid application token'
         });
     }
 

@@ -46,7 +46,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(compression());
 
 app.use(cors({
-    origin: ["http://localhost:5173","https://api.cloudinary.com"],
+    origin: ["http://localhost:3000","http://localhost:5173","https://api.cloudinary.com"],
     methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
     credentials: true
 }))
@@ -84,6 +84,13 @@ app.use('/api/vendor',productMngRouter)
 app.use('/api/vendor/offer',offerRouter)
 app.use('/api/vendor/orders',vendorOrderRouter)
 app.use('/api/vendor/dashboard',vendorDashboardRouter)
+
+const clientBuildPath = path.join(__dirname, 'client/dist');
+app.use(express.static(clientBuildPath));
+
+app.get('*', (req, res) => {
+    res.sendFile(path.join(clientBuildPath, 'index.html'));
+  });
 
 app.use(errorMiddleware); 
 
