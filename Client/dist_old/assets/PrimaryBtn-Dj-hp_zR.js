@@ -1,1 +1,0 @@
-import{j as n}from"./index-Ch9wd4yu.js";const s=({text:t,onClick:r,className:e=""})=>n.jsx("button",{type:"submit",onClick:r,className:`bg-orange-500 text-white rounded-md hover:bg-orange-600 transition duration-300 ${e}`,children:t});export{s as P};
