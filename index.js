@@ -85,7 +85,7 @@ app.use('/api/vendor/offer',offerRouter)
 app.use('/api/vendor/orders',vendorOrderRouter)
 app.use('/api/vendor/dashboard',vendorDashboardRouter)
 
-const clientBuildPath = path.join(__dirname, 'client/dist');
+const clientBuildPath = path.join(__dirname, 'Client/dist');
 app.use(express.static(clientBuildPath));
 
 app.get('*', (req, res) => {
