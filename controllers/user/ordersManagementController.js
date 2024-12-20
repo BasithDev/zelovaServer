@@ -164,14 +164,6 @@ const createRazorpayOrder = async (req, res, next) => {
         const { amount, couponCode } = req.body;
         let finalAmount = amount;
 
-        if (couponCode) {
-            const coupon = await Coupon.findOne({ code: couponCode });
-            await RedeemedCoupon.create({
-                userId,
-                couponId: coupon._id
-            });
-        }
-
         const options = {
             amount: Math.round(finalAmount * 100), // Convert to paise and ensure it's an integer
             currency: 'INR',
@@ -277,6 +269,21 @@ const verifyRazorpayPayment = async (req, res, next) => {
 
         const order = await Order.create(finalOrderDetails);
         
+        if (orderDetails.couponCode) {
+            console.log('Coupon Code:', orderDetails.couponCode);
+            console.log('User ID:', userId);
+            
+            const coupon = await Coupon.findOne({ code: orderDetails.couponCode });
+            console.log('Coupon:', coupon);
+            
+            if (coupon) {
+                await RedeemedCoupon.create({
+                    userId,
+                    couponId: coupon._id
+                });
+            }
+        }
+
         if (orderDetails.cartId) {
             await Cart.deleteOne({ _id: orderDetails.cartId });
         }
