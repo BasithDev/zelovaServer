@@ -270,11 +270,10 @@ const verifyRazorpayPayment = async (req, res, next) => {
         const order = await Order.create(finalOrderDetails);
         
         if (orderDetails.couponCode) {
-            console.log('Coupon Code:', orderDetails.couponCode);
-            console.log('User ID:', userId);
+            
             
             const coupon = await Coupon.findOne({ code: orderDetails.couponCode });
-            console.log('Coupon:', coupon);
+
             
             if (coupon) {
                 await RedeemedCoupon.create({
@@ -290,7 +289,6 @@ const verifyRazorpayPayment = async (req, res, next) => {
 
         // Generate and award coins for Razorpay payment
         const generatedCoins = generateRandomCoins(orderDetails.billDetails.finalAmount);
-        console.log('Generated coins:', generatedCoins);
         await zcoin.findOneAndUpdate(
             { userId },
             { $inc: { balance: generatedCoins } },
