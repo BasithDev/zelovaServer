@@ -166,25 +166,14 @@ const createRazorpayOrder = async (req, res, next) => {
 
         if (couponCode) {
             const coupon = await Coupon.findOne({ code: couponCode });
-            if (coupon) {
-                const isRedeemed = await RedeemedCoupon.findOne({ 
-                    userId, 
-                    couponCode: couponCode 
-                });
-
-                if (!isRedeemed) {
-                    if (coupon.discount === 'PERCENTAGE') {
-                        const discount = (amount * coupon.discountValue) / 100;
-                        finalAmount = amount - discount;
-                    } else {
-                        finalAmount = amount - coupon.discountValue;
-                    }
-                }
-            }
+            await RedeemedCoupon.create({
+                userId,
+                couponId: coupon._id
+            });
         }
 
         const options = {
-            amount: Math.round(finalAmount * 100),
+            amount: finalAmount,
             currency: 'INR',
             receipt: 'receipt_' + Math.random().toString(36).substring(7),
         };
