@@ -173,7 +173,7 @@ const createRazorpayOrder = async (req, res, next) => {
         }
 
         const options = {
-            amount: finalAmount,
+            amount: Math.round(finalAmount * 100), // Convert to paise and ensure it's an integer
             currency: 'INR',
             receipt: 'receipt_' + Math.random().toString(36).substring(7),
         };
