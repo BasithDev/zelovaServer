@@ -117,7 +117,7 @@ const getMenu = async (req, res, next) => {
                     distanceField: "distance",
                     maxDistance: 50000,
                     spherical: true,
-                    query: { _id: new mongoose.Types.ObjectId(id), isActive: true }
+                    query: { _id: new mongoose.Types.ObjectId(String(id)), isActive: true }
                 }
             },
             {
@@ -135,6 +135,11 @@ const getMenu = async (req, res, next) => {
         if (!restaurant || restaurant.length === 0) {
             return res.status(statusCodes.NOT_FOUND).json({ message: 'Restaurant not found' });
         }
+
+        if (restaurant[0].distance > 50000) {
+            return res.status(statusCodes.BAD_REQUEST).json({ message: 'Restaurant is outside delivery range' });
+        }
+
         const menu = await FoodItem.find({ restaurantId: id , isActive: true })
             .populate('foodCategory')
             .populate('offers')

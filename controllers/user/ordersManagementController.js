@@ -49,6 +49,14 @@ const placeOrder = async (req, res, next) => {
 
         const paymentMethod = billDetails.paymentMethod;
 
+        // Prevent coupon usage when paying with Zcoins
+        if (paymentMethod === 'ZCOINS' && couponCode) {
+            return res.status(statusCodes.BAD_REQUEST).json({ 
+                success: false,
+                message: 'Coupons cannot be used with Zcoin payments'
+            });
+        }
+
         const orderData = {
             userId,
             restaurantId,
@@ -153,10 +161,30 @@ const createRazorpayOrder = async (req, res, next) => {
             return res.status(statusCodes.BAD_REQUEST).json({ message: 'User ID is required' });
         }
         
-        const { amount } = req.body;
+        const { amount, couponCode } = req.body;
+        let finalAmount = amount;
+
+        if (couponCode) {
+            const coupon = await Coupon.findOne({ code: couponCode });
+            if (coupon) {
+                const isRedeemed = await RedeemedCoupon.findOne({ 
+                    userId, 
+                    couponCode: couponCode 
+                });
+
+                if (!isRedeemed) {
+                    if (coupon.discount === 'PERCENTAGE') {
+                        const discount = (amount * coupon.discountValue) / 100;
+                        finalAmount = amount - discount;
+                    } else {
+                        finalAmount = amount - coupon.discountValue;
+                    }
+                }
+            }
+        }
 
         const options = {
-            amount: Math.round(amount * 100),
+            amount: Math.round(finalAmount * 100),
             currency: 'INR',
             receipt: 'receipt_' + Math.random().toString(36).substring(7),
         };
@@ -165,7 +193,8 @@ const createRazorpayOrder = async (req, res, next) => {
 
         res.status(statusCodes.OK).json({
             success: true,
-            order: razorpayOrder
+            order: razorpayOrder,
+            finalAmount
         });
     } catch (error) {
         console.error('Error creating Razorpay order:', error);

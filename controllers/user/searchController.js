@@ -28,6 +28,7 @@ const getProducts = async (req, res, next) => {
                 select: 'offerName',
             }).populate({
                 path: 'restaurantId',
+                match: { isActive: true },
                 select: 'name address',
             }).select('name price image foodCategory offers restaurantId');
 
@@ -48,6 +49,7 @@ const getProducts = async (req, res, next) => {
                 select: 'offerName',
             }).populate({
                 path: 'restaurantId',
+                match: { isActive: true },
                 select: 'name address',
             }).select('name price image foodCategory offers restaurantId');
 
