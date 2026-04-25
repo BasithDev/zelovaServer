@@ -2,20 +2,34 @@ const redis = require("redis");
 require("dotenv").config();
 
 // Create Redis client with v5 API
-const client = redis.createClient({
-  socket: {
-    host: process.env.REDIS_HOST || "localhost",
-    port: process.env.REDIS_PORT || 6379,
-    reconnectStrategy: (retries) => {
-      if (retries > 10) {
-        console.error("Redis: Max reconnection attempts reached");
-        return new Error("Redis reconnection failed");
-      }
-      return Math.min(retries * 100, 3000); // Exponential backoff, max 3s
-    },
-  },
-  password: process.env.REDIS_PASSWORD || undefined,
-});
+// Support both REDIS_URL (cloud) and individual env vars (local)
+const client = process.env.REDIS_URL 
+  ? redis.createClient({
+      url: process.env.REDIS_URL,
+      socket: {
+        reconnectStrategy: (retries) => {
+          if (retries > 10) {
+            console.error("Redis: Max reconnection attempts reached");
+            return new Error("Redis reconnection failed");
+          }
+          return Math.min(retries * 100, 3000);
+        },
+      },
+    })
+  : redis.createClient({
+      socket: {
+        host: process.env.REDIS_HOST || "localhost",
+        port: process.env.REDIS_PORT || 6379,
+        reconnectStrategy: (retries) => {
+          if (retries > 10) {
+            console.error("Redis: Max reconnection attempts reached");
+            return new Error("Redis reconnection failed");
+          }
+          return Math.min(retries * 100, 3000);
+        },
+      },
+      password: process.env.REDIS_PASSWORD || undefined,
+    });
 
 // Event handlers
 client.on("error", (err) => console.error("Redis Error:", err));
