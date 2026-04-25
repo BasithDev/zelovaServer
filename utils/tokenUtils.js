@@ -73,8 +73,8 @@ const generateTokenPair = (user, additionalData = {}) => {
  */
 const getRefreshTokenCookieConfig = () => ({
     httpOnly: true,    // Prevents XSS - JavaScript cannot access
-    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-    sameSite: 'strict', // Prevents CSRF
+    secure: true,      // HTTPS only (required for sameSite: 'none')
+    sameSite: 'none',  // Required for cross-origin (Vercel frontend + Render backend)
     maxAge: REFRESH_TOKEN_COOKIE_MAX_AGE,
     path: '/'          // Cookie available for all paths
 });
@@ -99,8 +99,8 @@ const clearRefreshTokenCookie = (res, isAdmin = false) => {
     const cookieName = isAdmin ? 'admin_refresh_token' : 'refresh_token';
     res.clearCookie(cookieName, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: true,
+        sameSite: 'none',
         path: '/'
     });
 };
