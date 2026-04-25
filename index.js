@@ -5,6 +5,11 @@ const path = require('path')
 const connetDB = require('./config/databaseConnectionConfig')
 const compression = require('compression');
 
+// Security & Logging Middleware
+const helmetConfig = require('./middlewares/helmetConfig');
+const requestLogger = require('./middlewares/requestLogger');
+const logger = require('./utils/logger');
+
 const authRouter = require('./routes/auth/authenticationRoutes')
 const userReqVendorRouter = require('./routes/user/vendorRequestRoutes')
 const userRouter = require('./routes/user/userRoutes')
@@ -40,21 +45,41 @@ require('dotenv').config()
 
 const app = express()
 
+// Security headers (first middleware)
+app.use(helmetConfig);
+
+// Request logging
+app.use(requestLogger);
+
+// Body parsing with size limits
 app.use(cookieParser())
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(compression());
 
+// CORS configuration
 app.use(cors({
-    origin: ["http://zelova.zapto.org","http://localhost:5173","https://api.cloudinary.com"],
+    origin: [
+        process.env.CLIENT_URL || "http://localhost:5173",
+        process.env.APP_URL,
+        "http://zelova.zapto.org",
+        "https://api.cloudinary.com"
+    ].filter(Boolean),
     methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
-    credentials: true
+    credentials: true,
+    maxAge: 86400 // Cache preflight for 24 hours
 }))
 
+// Database connection
 connetDB()
-const port = process.env.PORT
+const port = process.env.PORT || 5000
 
 app.use(passport.initialize())
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 // Apply API protection to all /api routes
 app.use('/api', protectApi);
@@ -85,22 +110,29 @@ app.use('/api/vendor/offer',offerRouter)
 app.use('/api/vendor/orders',vendorOrderRouter)
 app.use('/api/vendor/dashboard',vendorDashboardRouter)
 
-const clientBuildPath = path.join(__dirname, 'Client/dist');
-app.use(express.static(clientBuildPath));
-
-app.get('*', (req, res) => {
-    res.sendFile(path.join(clientBuildPath, 'index.html'));
-  });
-
 app.use(errorMiddleware); 
 
-const server = app.listen(port, () => console.log(`Server is listening on port ${port}!`));
+const server = app.listen(port, () => {
+    logger.info(`Server is listening on port ${port}`);
+    console.log(`Server is listening on port ${port}!`);
+});
 
 server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
+        logger.error(`Port ${port} is already in use`);
         console.error(`Port ${port} is already in use. Please use a different port.`);
         process.exit(1);
     } else {
+        logger.error('Server error:', err);
         console.error('Server error:', err);
     }
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    logger.info('SIGTERM received. Shutting down gracefully...');
+    server.close(() => {
+        logger.info('Server closed');
+        process.exit(0);
+    });
 });

@@ -30,10 +30,8 @@ const getOffers = async (req, res, next) => {
             return res.status(statusCodes.BAD_REQUEST).json({ message: 'Restaurant ID is required.' });
         }
         const offers = await Offers.find({ restaurantId });
-        if (!offers || offers.length === 0) {
-            return res.status(statusCodes.NOT_FOUND).json({ message: 'No offers found for this restaurant.' });
-        }
-        res.status(statusCodes.OK).json({ offers });
+        // Return 200 with empty array instead of 404
+        res.status(statusCodes.OK).json({ offers: offers || [] });
     } catch (error) {
         console.error('Error fetching offers:', error);
         next(error);

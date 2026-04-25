@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon index"
+    "start": "nodemon index",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
+    "docker:dev": "docker build -f Dockerfile.dev -t zelova-server:dev . && docker run -p 5000:5000 -v $(pwd):/app zelova-server:dev",
+    "docker:prod": "docker build -f Dockerfile.prod -t zelova-server:prod . && docker run -p 5000:5000 zelova-server:prod"
   },
   "author": "",
   "license": "ISC",
@@ -21,17 +25,23 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.1",
     "express-rate-limit": "^7.4.1",
+    "express-validator": "^7.3.1",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.7.3",
     "node-cron": "^3.0.3",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^6.10.1",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "pdfkit": "^0.15.1",
     "razorpay": "^2.9.5",
-    "redis": "^4.7.0"
+    "redis": "^4.7.0",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-security": "^3.0.1",
     "nodemon": "^3.1.7"
   }
 }

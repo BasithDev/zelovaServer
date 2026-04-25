@@ -95,13 +95,35 @@ cartSchema.pre('save', async function(next) {
           throw new Error('Food item not found');
         }
 
-        item.itemPrice = foodItem.price;
+        // Start with base price
+        let basePrice = foodItem.price;
+        let addOnPrice = 0;
 
         if (item.selectedCustomizations && item.selectedCustomizations.length > 0) {
-          const customizationPrice = item.selectedCustomizations.reduce((total, cust) => 
-            total + (cust.options.price || 0), 0);
-          item.itemPrice += customizationPrice;
+          // For each selected customization, check if it's a variant or add-on
+          for (const selectedCust of item.selectedCustomizations) {
+            // Find the customization definition in the food item
+            const custDefinition = foodItem.customizations?.find(
+              c => c.fieldName === selectedCust.fieldName
+            );
+            
+            if (custDefinition) {
+              if (custDefinition.type === 'version') {
+                // Variant: REPLACES the base price
+                basePrice = selectedCust.options.price || 0;
+              } else {
+                // Add-on: ADDS to the price
+                addOnPrice += selectedCust.options.price || 0;
+              }
+            } else {
+              // Fallback: treat as add-on if definition not found
+              addOnPrice += selectedCust.options.price || 0;
+            }
+          }
         }
+
+        // Final item price = base price (or variant price) + add-ons
+        item.itemPrice = basePrice + addOnPrice;
       }
     }
 

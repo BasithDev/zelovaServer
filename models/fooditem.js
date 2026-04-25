@@ -7,6 +7,19 @@ const customizationSchema = new Schema({
     required: true,
     trim: true,
   },
+  type: {
+    type: String,
+    enum: ['addon', 'version'], // addon = optional extras, version = required choice (half/full, size)
+    default: 'addon',
+  },
+  required: {
+    type: Boolean,
+    default: false, // true for version type typically
+  },
+  multiSelect: {
+    type: Boolean,
+    default: true, // false for version type (single choice)
+  },
   options: [
     {
       name: { type: String, required: true, trim: true },

@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { verifyToken } = require('../../middlewares/authenticationValidatorMiddleware');
+const { invalidateCache } = require('../../middlewares/cacheMiddleware');
 
 const {
     getRestaurant,
@@ -9,10 +11,31 @@ const {
     updateRestaurantPic
 } = require('../../controllers/vendor/vendorRestaurantController');
 
-router.get('/restaurant', getRestaurant);
-router.put('/restaurant/details', updateRestaurantDetails);
-router.patch('/restaurant/status', openOrCloseShop);
-router.patch('/restaurant/image', updateRestaurantPic);
-router.patch('/restaurant/location', setLocation);
+// All vendor routes require user authentication
+router.get('/restaurant', verifyToken('user'), getRestaurant);
+
+router.put('/restaurant/details', 
+    verifyToken('user'),
+    invalidateCache('restaurants:*', 'menu:*'),
+    updateRestaurantDetails
+);
+
+router.patch('/restaurant/status', 
+    verifyToken('user'),
+    invalidateCache('restaurants:*'),
+    openOrCloseShop
+);
+
+router.patch('/restaurant/image', 
+    verifyToken('user'),
+    invalidateCache('restaurants:*'),
+    updateRestaurantPic
+);
+
+router.patch('/restaurant/location', 
+    verifyToken('user'),
+    invalidateCache('restaurants:*'),
+    setLocation
+);
 
 module.exports = router;

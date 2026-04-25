@@ -1,6 +1,7 @@
 const FoodItem = require('../../models/fooditem');
 const getRestaurantId = require('../../helpers/restaurantIdHelper');
 const statusCodes = require('../../config/statusCodes');
+const { MESSAGES } = require('../../config/constants');
 
 const addProduct = async (req, res, next) => {
     try {
@@ -15,20 +16,40 @@ const addProduct = async (req, res, next) => {
             isCustomizable,
         } = req.body;
 
-        const customFieldsChanged = req.body.customFields.map(field => ({
-            fieldName: field.fieldName,
-            options: field.options.split(',').map((name, index) => ({
-                name: name.trim(),
-                price: Number(field.price.split(',')[index])
-            }))
-        }));
+        // Handle customizations - supports both new array format and legacy string format
+        const customFieldsChanged = (req.body.customFields || []).map(field => {
+            // New format: options is already an array of {name, price}
+            if (Array.isArray(field.options)) {
+                return {
+                    fieldName: field.fieldName,
+                    type: field.type || 'addon',
+                    required: field.required || false,
+                    multiSelect: field.multiSelect !== false,
+                    options: field.options.filter(opt => opt.name && opt.price !== undefined).map(opt => ({
+                        name: opt.name.trim(),
+                        price: Number(opt.price)
+                    }))
+                };
+            }
+            // Legacy format: options and price are comma-separated strings
+            return {
+                fieldName: field.fieldName,
+                type: field.type || 'addon',
+                required: field.required || false,
+                multiSelect: field.multiSelect !== false,
+                options: (field.options || '').split(',').map((name, index) => ({
+                    name: name.trim(),
+                    price: Number((field.price || '0').split(',')[index] || 0)
+                }))
+            };
+        });
 
 
         const restaurantId = getRestaurantId(token, process.env.JWT_SECRET);
         if (!restaurantId || !itemName || !price || !category) {
             return res.status(statusCodes.BAD_REQUEST).json({
                 success: false,
-                message: "Missing required fields: restaurantId, name, price, or foodCategory."
+                message: MESSAGES.PRODUCT.MISSING_FIELDS
             });
         }
 
@@ -41,7 +62,7 @@ const addProduct = async (req, res, next) => {
         if (existingFoodItem) {
             return res.status(statusCodes.BAD_REQUEST).json({
                 success: false,
-                message: "This food item already exists in your menu for the selected category."
+                message: MESSAGES.PRODUCT.ALREADY_EXISTS
             });
         }
 
@@ -61,7 +82,7 @@ const addProduct = async (req, res, next) => {
 
         res.status(statusCodes.CREATED).json({
             success: true,
-            message: "Food item added successfully.",
+            message: MESSAGES.PRODUCT.ADDED_SUCCESS,
         });
     } catch (error) {
         console.error(error);
@@ -75,7 +96,7 @@ const getProducts = async (req, res, next) => {
         if (!restaurantId) {
             return res.status(statusCodes.BAD_REQUEST).json({
                 success: false,
-                message: "Invalid or missing restaurant ID.",
+                message: MESSAGES.GENERIC.INVALID_RESTAURANT_ID,
             });
         }
 
@@ -95,15 +116,10 @@ const getProducts = async (req, res, next) => {
                 select: 'name price',
             });
 
-        if (!foodItems.length) {
-            return res.status(statusCodes.NOT_FOUND).json({
-                success: false,
-                message: "No food items found.",
-            });
-        }
+        // Return empty array with 200 if no items (not 404)
         res.status(statusCodes.OK).json({
             success: true,
-            message: "Food items retrieved successfully.",
+            message: foodItems.length ? MESSAGES.PRODUCT.RETRIEVED_SUCCESS : MESSAGES.PRODUCT.NONE_FOUND,
             data: foodItems,
         });
     } catch (error) {
@@ -122,11 +138,11 @@ const listOrUnlist = async (req, res, next) => {
         );
 
         if (!updatedFoodItem) {
-            return res.status(statusCodes.NOT_FOUND).json({ message: 'Food item not found' });
+            return res.status(statusCodes.NOT_FOUND).json({ message: MESSAGES.PRODUCT.NOT_FOUND });
         }
 
         res.status(statusCodes.OK).json({
-            message: `Food item has been ${isActive ? 'listed' : 'unlisted'} successfully.`,
+            message: MESSAGES.PRODUCT.LISTED_SUCCESS(isActive),
             data: updatedFoodItem,
         });
     } catch (error) {
@@ -143,13 +159,13 @@ const deleteProduct = async (req, res, next) => {
         if (!product) {
             return res.status(statusCodes.NOT_FOUND).json({
                 success: false,
-                message: "Product not found",
+                message: MESSAGES.PRODUCT.NOT_FOUND,
             });
         }
 
         return res.status(statusCodes.OK).json({
             success: true,
-            message: "Product deleted successfully",
+            message: MESSAGES.PRODUCT.DELETED_SUCCESS,
         });
 
     } catch (error) {
@@ -160,11 +176,26 @@ const deleteProduct = async (req, res, next) => {
 
 const updateProduct = async (req, res, next) => {
     try {
-        const { id, name, price, description, image } = req.body;
+        const { id, name, price, description, image, customizable, customizations } = req.body;
 
         const update = {};
-        if (id || name || price || description || image) {
-            Object.assign(update, { name, price, description, image });
+        if (name !== undefined) update.name = name;
+        if (price !== undefined) update.price = price;
+        if (description !== undefined) update.description = description;
+        if (image !== undefined) update.image = image;
+        if (customizable !== undefined) update.customizable = customizable;
+        if (customizations !== undefined) {
+            // Ensure proper format for customizations
+            update.customizations = customizations.map(c => ({
+                fieldName: c.fieldName,
+                type: c.type || 'addon',
+                required: c.required || false,
+                multiSelect: c.multiSelect !== false,
+                options: (c.options || []).map(o => ({
+                    name: o.name,
+                    price: Number(o.price)
+                }))
+            }));
         }
 
         const updatedProduct = await FoodItem.findByIdAndUpdate(
@@ -179,18 +210,14 @@ const updateProduct = async (req, res, next) => {
             .populate({
                 path: 'offers',
                 select: 'offerName discountAmount requiredQuantity',
-            })
-            .populate({
-                path: 'customizations.options',
-                select: 'name price',
             });
 
         if (!updatedProduct) {
-            return res.status(statusCodes.NOT_FOUND).json({ message: "Product not found" });
+            return res.status(statusCodes.NOT_FOUND).json({ message: MESSAGES.PRODUCT.NOT_FOUND });
         }
 
         res.status(statusCodes.OK).json({
-            message: "Product updated successfully",
+            message: MESSAGES.PRODUCT.UPDATED_SUCCESS,
             updatedProduct
         });
 
@@ -204,12 +231,12 @@ const updateOffer = async (req, res, next) => {
       const { productId, offerId } = req.body;
   
       if (!productId) {
-        return res.status(statusCodes.BAD_REQUEST).json({ message: 'FoodItem ID is required.' });
+        return res.status(statusCodes.BAD_REQUEST).json({ message: MESSAGES.OFFER.FOOD_ITEM_ID_REQUIRED });
       }
   
       const foodItem = await FoodItem.findById(productId);
       if (!foodItem) {
-        return res.status(statusCodes.NOT_FOUND).json({ message: 'FoodItem not found.' });
+        return res.status(statusCodes.NOT_FOUND).json({ message: MESSAGES.OFFER.NOT_FOUND });
       }
 
       if(offerId){
@@ -220,7 +247,7 @@ const updateOffer = async (req, res, next) => {
       await foodItem.save();
   
       return res.status(statusCodes.OK).json({
-        message: 'Offer updated successfully.',
+        message: MESSAGES.OFFER.UPDATED_SUCCESS,
         updatedOffer: offerId,
       });
     } catch (error) {

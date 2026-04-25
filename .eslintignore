@@ -1,0 +1,8 @@
+node_modules/
+logs/
+Client/
+coverage/
+*.min.js
+.git/
+.vscode/
+.idea/

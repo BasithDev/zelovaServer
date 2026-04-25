@@ -15,7 +15,8 @@ const getNearbyRestaurantsFromDB = async (userLat, userLong, maxDistance = 50000
         const nearbyRestaurants = await Restaurant.aggregate([
             {
                 $geoNear: {
-                    near: { type: "Point", coordinates: [userLat, userLong] },
+                    // MongoDB GeoJSON expects [longitude, latitude] order
+                    near: { type: "Point", coordinates: [userLong, userLat] },
                     distanceField: "distance",
                     maxDistance: maxDistance,
                     spherical: true,
@@ -24,28 +25,36 @@ const getNearbyRestaurantsFromDB = async (userLat, userLong, maxDistance = 50000
             },
             {
                 $addFields: {
+                    // If restaurant has opening hours, check if open now
+                    // If no hours defined, consider always open
                     isOpenNow: {
                         $cond: {
-                            if: { $gt: ["$openingTime", "$closingTime"] },
-                            then: {
-                                $or: [
-                                    { $lte: ["$openingTime", currentTime] },
-                                    { $gte: ["$closingTime", currentTime] }
+                            if: {
+                                $and: [
+                                    { $ifNull: ["$openingTime", false] },
+                                    { $ifNull: ["$closingTime", false] }
                                 ]
                             },
-                            else: {
-                                $and: [
-                                    { $lte: ["$openingTime", currentTime] },
-                                    { $gte: ["$closingTime", currentTime] }
-                                ]
-                            }
+                            then: {
+                                $cond: {
+                                    if: { $gt: ["$openingTime", "$closingTime"] },
+                                    then: {
+                                        $or: [
+                                            { $lte: ["$openingTime", currentTime] },
+                                            { $gte: ["$closingTime", currentTime] }
+                                        ]
+                                    },
+                                    else: {
+                                        $and: [
+                                            { $lte: ["$openingTime", currentTime] },
+                                            { $gte: ["$closingTime", currentTime] }
+                                        ]
+                                    }
+                                }
+                            },
+                            else: true  // No hours = always open
                         }
                     }
-                }
-            },
-            {
-                $match: {
-                    isOpenNow: true
                 }
             },
             {
@@ -113,7 +122,8 @@ const getMenu = async (req, res, next) => {
         const restaurant = await Restaurant.aggregate([
             {
                 $geoNear: {
-                    near: { type: "Point", coordinates: [parseFloat(lat), parseFloat(lon)] },
+                    // MongoDB GeoJSON expects [longitude, latitude] order
+                    near: { type: "Point", coordinates: [parseFloat(lon), parseFloat(lat)] },
                     distanceField: "distance",
                     maxDistance: 50000,
                     spherical: true,

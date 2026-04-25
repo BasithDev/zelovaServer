@@ -7,10 +7,18 @@ const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 
 const getAdminById = async (req, res, next) => {
-    const token = req.cookies.admin_token;
-    const id = getUserId(token, process.env.JWT_ADMIN_SECRET);
     try {
-        const user = await User.findById(id);
+        // Use userId from auth middleware (set by verifyAccessToken)
+        const id = req.user?.userId;
+        
+        if (!id) {
+            return res.status(statusCodes.UNAUTHORIZED).json({
+                status: "Failed",
+                message: "Not authenticated"
+            });
+        }
+
+        const user = await User.findById(id).select('-password');
 
         if (!user) {
             return res.status(statusCodes.NOT_FOUND).json({
@@ -372,7 +380,8 @@ const blockUnblockRestaurant = async (req, res) => {
 
 const getDashboardData = async (req, res) => {
     try {
-        const totalUsers = await User.countDocuments();
+        // Count all users including vendors, but exclude admins
+        const totalUsers = await User.countDocuments({ isAdmin: { $ne: true } });
         const totalOrders = await Order.countDocuments();
         const totalSales = await Order.aggregate([
             { $match: { status: 'ORDER ACCEPTED' } },  

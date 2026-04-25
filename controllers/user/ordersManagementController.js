@@ -8,6 +8,8 @@ const getUserId = require('../../helpers/userIdHelper')
 const crypto = require('crypto');
 const Razorpay = require('razorpay');
 const statusCodes = require('../../config/statusCodes');
+const { MESSAGES } = require('../../config/constants');
+const { OrderStatus, PaymentMethod } = require('../../config/enums');
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -41,7 +43,7 @@ const placeOrder = async (req, res, next) => {
     try {
         const token = req.cookies.user_token;
         if (!token) {
-            return res.status(statusCodes.UNAUTHORIZED).json({ message: 'Not authorized' });
+            return res.status(statusCodes.UNAUTHORIZED).json({ message: MESSAGES.GENERIC.UNAUTHORIZED });
         }
         const userId = getUserId(token, process.env.JWT_SECRET);
         
@@ -50,10 +52,10 @@ const placeOrder = async (req, res, next) => {
         const paymentMethod = billDetails.paymentMethod;
 
         // Prevent coupon usage when paying with Zcoins
-        if (paymentMethod === 'ZCOINS' && couponCode) {
+        if (paymentMethod === PaymentMethod.ZCOINS && couponCode) {
             return res.status(statusCodes.BAD_REQUEST).json({ 
                 success: false,
-                message: 'Coupons cannot be used with Zcoin payments'
+                message: MESSAGES.ORDER.COUPON_NOT_WITH_ZCOINS
             });
         }
 
@@ -64,7 +66,7 @@ const placeOrder = async (req, res, next) => {
             items,
             billDetails,
             rating: 0,
-            status: 'PENDING',
+            status: OrderStatus.PENDING,
             orderId: generateOrderId()
         };
 
@@ -73,7 +75,7 @@ const placeOrder = async (req, res, next) => {
             if (!coupon) {
                 return res.status(statusCodes.BAD_REQUEST).json({ 
                     success: false,
-                    message: 'Invalid coupon code'
+                    message: MESSAGES.ORDER.INVALID_COUPON
                 });
             }
             orderData.usedCoupon = {
@@ -81,12 +83,12 @@ const placeOrder = async (req, res, next) => {
             };
         }
 
-        if (paymentMethod === 'ZCOINS') {
+        if (paymentMethod === PaymentMethod.ZCOINS) {
             const userCoins = await zcoin.findOne({ userId });
             if (!userCoins || userCoins.balance < billDetails.finalAmount) {
                 return res.status(statusCodes.BAD_REQUEST).json({
                     success: false,
-                    message: 'Insufficient Zcoins balance'
+                    message: MESSAGES.ORDER.INSUFFICIENT_ZCOINS
                 });
             }
             const deductedCoins = Math.floor(-billDetails.finalAmount);
@@ -98,6 +100,15 @@ const placeOrder = async (req, res, next) => {
 
         const order = await Order.create(orderData);
 
+        // Notify vendor in real-time via SSE
+        try {
+            const sseManager = require('../../utils/sseManager');
+            sseManager.notifyNewOrder(restaurantId, order);
+        } catch (sseError) {
+            // SSE notification is non-critical, log but don't fail the order
+            console.log('[SSE] Failed to notify vendor:', sseError.message);
+        }
+
         await Cart.deleteOne({ _id: cartId });
 
         if (couponCode) {
@@ -108,7 +119,7 @@ const placeOrder = async (req, res, next) => {
             });
         }
         const generatedCoins = generateRandomCoins(billDetails.finalAmount);
-        if (paymentMethod !== 'ZCOINS') {
+        if (paymentMethod !== PaymentMethod.ZCOINS) {
 
             await zcoin.findOneAndUpdate(
                 { userId },
@@ -119,9 +130,9 @@ const placeOrder = async (req, res, next) => {
 
         res.status(statusCodes.CREATED).json({
             success: true,
-            message: 'Order placed successfully',
+            message: MESSAGES.ORDER.PLACED_SUCCESS,
             order,
-            coinsEarned: paymentMethod === 'ZCOINS' ? 0 : generatedCoins
+            coinsEarned: paymentMethod === PaymentMethod.ZCOINS ? 0 : generatedCoins
         });
 
     } catch (error) {
@@ -134,13 +145,13 @@ const getCurrentOrders = async (req, res, next) => {
     try {
         const token = req.cookies.user_token;
         if (!token) {
-            return res.status(statusCodes.UNAUTHORIZED).json({ message: 'Not authorized' });
+            return res.status(statusCodes.UNAUTHORIZED).json({ message: MESSAGES.GENERIC.UNAUTHORIZED });
         }
         const userId = getUserId(token, process.env.JWT_SECRET);
-        const orders = await Order.find({ userId, status: { $ne: 'ORDER ACCEPTED' } });
+        const orders = await Order.find({ userId, status: { $ne: OrderStatus.ACCEPTED } });
         res.status(statusCodes.OK).json({ 
             success: true,
-            message: 'Orders retrieved successfully',
+            message: MESSAGES.ORDER.RETRIEVED_SUCCESS,
             orders
         });
     } catch (error) {
@@ -153,12 +164,12 @@ const createRazorpayOrder = async (req, res, next) => {
     try {
         const token = req.cookies.user_token;
         if (!token) {
-            return res.status(statusCodes.UNAUTHORIZED).json({ message: 'Not authorized' });
+            return res.status(statusCodes.UNAUTHORIZED).json({ message: MESSAGES.GENERIC.UNAUTHORIZED });
         }
         const userId = getUserId(token, process.env.JWT_SECRET);
 
         if (!userId) {
-            return res.status(statusCodes.BAD_REQUEST).json({ message: 'User ID is required' });
+            return res.status(statusCodes.BAD_REQUEST).json({ message: MESSAGES.USER.ID_REQUIRED });
         }
         
         const { amount, couponCode } = req.body;
@@ -187,11 +198,11 @@ const getPreviousOrdersOnDate = async (req, res, next) => {
     try {
         const token = req.cookies.user_token;
         if (!token) {
-            return res.status(statusCodes.UNAUTHORIZED).json({ message: 'Not authorized' });
+            return res.status(statusCodes.UNAUTHORIZED).json({ message: MESSAGES.GENERIC.UNAUTHORIZED });
         }
         const userId = getUserId(token, process.env.JWT_SECRET);
         if (!userId) {
-            return res.status(statusCodes.BAD_REQUEST).json({ message: 'User ID is required'});
+            return res.status(statusCodes.BAD_REQUEST).json({ message: MESSAGES.USER.ID_REQUIRED});
         }
         const { date } = req.params;
         const searchDate = new Date(date);
@@ -200,7 +211,7 @@ const getPreviousOrdersOnDate = async (req, res, next) => {
 
         const orders = await Order.find({ 
             userId,
-            status: 'ORDER ACCEPTED',
+            status: OrderStatus.ACCEPTED,
             createdAt: {
                 $gte: startOfDay,
                 $lte: endOfDay
@@ -236,7 +247,7 @@ const verifyRazorpayPayment = async (req, res, next) => {
         if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !orderDetails) {
             return res.status(statusCodes.BAD_REQUEST).json({
                 success: false,
-                message: 'Missing required payment details'
+                message: MESSAGES.PAYMENT.MISSING_DETAILS
             });
         }
 
@@ -249,7 +260,7 @@ const verifyRazorpayPayment = async (req, res, next) => {
         if (razorpay_signature !== expectedSign) {
             return res.status(statusCodes.BAD_REQUEST).json({
                 success: false,
-                message: 'Invalid payment signature'
+                message: MESSAGES.PAYMENT.INVALID_SIGNATURE
             });
         }
 
@@ -264,7 +275,7 @@ const verifyRazorpayPayment = async (req, res, next) => {
                 razorpay_payment_id,
                 razorpay_signature
             },
-            status: 'PAID'
+            status: OrderStatus.PAID
         };
 
         const order = await Order.create(finalOrderDetails);
@@ -297,7 +308,7 @@ const verifyRazorpayPayment = async (req, res, next) => {
 
         res.status(statusCodes.OK).json({
             success: true,
-            message: 'Payment verified successfully',
+            message: MESSAGES.PAYMENT.VERIFIED_SUCCESS,
             order,
             coinsEarned: generatedCoins
         });
@@ -311,7 +322,7 @@ const updateOrderStatus = async (req, res, next) => {
     try {
         const token = req.cookies.user_token;
         if (!token) {
-            return res.status(statusCodes.UNAUTHORIZED).json({ message: 'Not authorized' })
+            return res.status(statusCodes.UNAUTHORIZED).json({ message: MESSAGES.GENERIC.UNAUTHORIZED })
         }
         const { orderId, status } = req.body;
         const updatedOrder = await Order.findOneAndUpdate(
@@ -320,9 +331,9 @@ const updateOrderStatus = async (req, res, next) => {
             { new: true }
         );
         if (!updatedOrder) {
-            return res.status(statusCodes.NOT_FOUND).json({ message: 'Order not found' });
+            return res.status(statusCodes.NOT_FOUND).json({ message: MESSAGES.ORDER.NOT_FOUND });
         }
-        res.status(statusCodes.OK).json({ message: 'Order status updated successfully', order: updatedOrder });
+        res.status(statusCodes.OK).json({ message: MESSAGES.ORDER.STATUS_UPDATED, order: updatedOrder });
     } catch (error) {
         console.error('Error updating order status:', error);
         next(error);
@@ -333,12 +344,12 @@ const rateRestaurant = async (req,res,next) => {
     try {
         const token = req.cookies.user_token;
         if (!token) {
-            return res.status(statusCodes.UNAUTHORIZED).json({ message: 'Not authorized' })
+            return res.status(statusCodes.UNAUTHORIZED).json({ message: MESSAGES.GENERIC.UNAUTHORIZED })
         }
         const { orderId,restaurantId, rating } = req.body;
         const restaurant = await Restaurant.findById(restaurantId);
         if (!restaurant) {
-            return res.status(statusCodes.NOT_FOUND).json({ message: 'Restaurant not found' });
+            return res.status(statusCodes.NOT_FOUND).json({ message: MESSAGES.GENERIC.RESTAURANT_NOT_FOUND });
         }
         restaurant.totalRatings += rating;
         restaurant.totalRatingCount += 1; 
@@ -350,9 +361,9 @@ const rateRestaurant = async (req,res,next) => {
             order.restaurantRate.status = true;
             await order.save();
         }else{
-            return res.status(statusCodes.NOT_FOUND).json({ message: 'Order not found' });
+            return res.status(statusCodes.NOT_FOUND).json({ message: MESSAGES.ORDER.NOT_FOUND });
         }
-        res.status(statusCodes.OK).json({ message: 'Resturant rating updated successfully' });
+        res.status(statusCodes.OK).json({ message: MESSAGES.ORDER.RATED_SUCCESS });
     } catch (error) {
         console.error('Error rating order:', error);
         next(error);

@@ -3,6 +3,8 @@ const getUserId = require('../../helpers/userIdHelper');
 const Restaurant = require('../../models/restaurant');
 const mongoose = require('mongoose');
 const statusCodes = require('../../config/statusCodes');
+const { MESSAGES } = require('../../config/constants');
+const { CartAction } = require('../../config/enums');
 
 const getCart = async (req, res, next) => {
     try {
@@ -54,12 +56,12 @@ const updateCart = async (req, res, next) => {
         const token = req.cookies.user_token;
         const userId = getUserId(token, process.env.JWT_SECRET);
         if (!userId) {
-            return res.status(statusCodes.UNAUTHORIZED).json({ message: 'Unauthorized' });
+            return res.status(statusCodes.UNAUTHORIZED).json({ message: MESSAGES.GENERIC.UNAUTHORIZED });
         }
 
         const { itemId, action, selectedCustomizations } = req.body;
         if (!itemId || !action) {
-            return res.status(statusCodes.BAD_REQUEST).json({ message: 'Item ID and action are required.' });
+            return res.status(statusCodes.BAD_REQUEST).json({ message: MESSAGES.GENERIC.MISSING_PARAMS });
         }
 
         let cart = await Cart.findOne({ userId });
@@ -68,7 +70,7 @@ const updateCart = async (req, res, next) => {
                 userId,
                 items: [{
                     item: itemId,
-                    quantity: action === 'add' ? 1 : 0,
+                    quantity: action === CartAction.ADD ? 1 : 0,
                     selectedCustomizations: selectedCustomizations || [],
                 }],
             });
@@ -78,13 +80,13 @@ const updateCart = async (req, res, next) => {
             if (itemIndex === -1) {
                 cart.items.push({
                     item: itemId,
-                    quantity: action === 'add' ? 1 : 0,
+                    quantity: action === CartAction.ADD ? 1 : 0,
                     selectedCustomizations: selectedCustomizations || [],
                 });
             } else {
-                if (action === 'add') {
+                if (action === CartAction.ADD) {
                     cart.items[itemIndex].quantity += 1;
-                } else if (action === 'remove') {
+                } else if (action === CartAction.REMOVE) {
                     cart.items[itemIndex].quantity -= 1;
                     if (cart.items[itemIndex].quantity <= 0) {
                         cart.items.splice(itemIndex, 1);
@@ -94,16 +96,16 @@ const updateCart = async (req, res, next) => {
 
             if (cart.items.length === 0) {
                 await Cart.findByIdAndDelete(cart._id);
-                return res.json({ message: 'Cart is empty and deleted.' });
+                return res.json({ message: MESSAGES.CART.EMPTY_DELETED });
             }
         }
 
         try {
             await cart.save();
-            res.json({ message: 'Cart updated successfully', cart });
+            res.json({ message: MESSAGES.CART.UPDATED_SUCCESS, cart });
         } catch (saveError) {
             if (saveError.name === 'ValidatorError' && saveError.message.includes('Multiple restaurants')) {
-                return res.status(400).json({ message: 'Cannot add items from multiple restaurants to the cart' });
+                return res.status(400).json({ message: MESSAGES.CART.MULTIPLE_RESTAURANTS });
             } else if (saveError.status === 400) {
                 return res.status(400).json({ message: saveError.message });
             }
@@ -120,15 +122,15 @@ const generateDeliveryFee = async (req, res, next) => {
     try {
         const token = req.cookies.user_token;
         if (!token) {
-            return res.status(statusCodes.UNAUTHORIZED).json({ message: 'Unauthorized' });
+            return res.status(statusCodes.UNAUTHORIZED).json({ message: MESSAGES.GENERIC.UNAUTHORIZED });
         }
         const userId = getUserId(token, process.env.JWT_SECRET);
         if (!userId) {
-            return res.status(statusCodes.BAD_REQUEST).json({ message: 'User ID is required' });
+            return res.status(statusCodes.BAD_REQUEST).json({ message: MESSAGES.USER.ID_REQUIRED });
         }
         let { lat, lon, restaurantId } = req.query;
         if (!lat || !lon || !restaurantId) {
-            return res.status(statusCodes.BAD_REQUEST).json({ message: 'Latitude, Longitude, and Restaurant ID are required' });
+            return res.status(statusCodes.BAD_REQUEST).json({ message: MESSAGES.GENERIC.MISSING_PARAMS });
         }
 
         lat = parseFloat(lat);
@@ -151,7 +153,7 @@ const generateDeliveryFee = async (req, res, next) => {
             ]);
 
             if (!distanceResult.length) {
-                return res.status(statusCodes.NOT_FOUND).json({ message: 'Distance calculation failed' });
+                return res.status(statusCodes.NOT_FOUND).json({ message: MESSAGES.GENERIC.DISTANCE_CALC_FAILED });
             }
 
             const deliveryFee = (distanceResult[0].distance / 1000) * 8;
@@ -159,7 +161,7 @@ const generateDeliveryFee = async (req, res, next) => {
             res.json({ deliveryFee });
         } catch (error) {
             console.error('Error during distance calculation:', error);
-            return res.status(statusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+            return res.status(statusCodes.INTERNAL_SERVER_ERROR).json({ message: MESSAGES.GENERIC.INTERNAL_ERROR });
         }
     } catch (error) {
         console.error('Error getting delivery fee:', error);

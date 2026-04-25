@@ -1,11 +1,17 @@
 const jwt = require('jsonwebtoken');
+const { verifyAccessToken } = require('../utils/tokenUtils');
 
-// Global API protection middleware
+/**
+ * Global API protection middleware
+ * Checks for XMLHttpRequest header to prevent direct browser access
+ * Note: Request signing (when enabled) provides stronger protection
+ */
 const protectApi = (req, res, next) => {
     // Skip checks for static files and certain paths
     if (req.path.startsWith('/assets/') || 
         req.path === '/favicon.ico' || 
-        req.path === '/') {
+        req.path === '/' ||
+        req.path === '/health') {
         return next();
     }
 
@@ -21,6 +27,7 @@ const protectApi = (req, res, next) => {
         '/auth/register',
         '/auth/verify-otp',
         '/auth/resend-otp',
+        '/auth/refresh',  // Refresh token endpoint is public (uses HTTP-only cookie)
         '/user/status'
     ];
 
@@ -28,15 +35,13 @@ const protectApi = (req, res, next) => {
         return next();
     }
 
-    // For other API endpoints, check headers
-    const xRequestedWith = req.get('X-Requested-With');
-    const appToken = req.get('X-App-Token');
-    
     // In development, be more lenient with header checks
     if (process.env.NODE_ENV === 'development') {
         return next();
     }
 
+    // Check XMLHttpRequest header (basic protection against direct browser access)
+    const xRequestedWith = req.get('X-Requested-With');
     if (!xRequestedWith || xRequestedWith !== 'XMLHttpRequest') {
         return res.status(403).json({
             success: false,
@@ -44,21 +49,31 @@ const protectApi = (req, res, next) => {
         });
     }
 
-    if (!appToken || appToken !== process.env.APP_SECRET) {
-        return res.status(403).json({
-            success: false,
-            message: 'Invalid application token'
-        });
-    }
+    // Note: X-App-Token check removed
+    // Use ENABLE_REQUEST_SIGNING=true for stronger protection
 
     next();
 };
 
-// Role-based authentication middleware
+/**
+ * Role-based authentication middleware
+ * Verifies JWT access token from Authorization header (Bearer token)
+ * Also sets req.cookies for backward compatibility with existing controllers
+ * 
+ * @param {string} role - 'admin' or 'user'
+ */
 const verifyToken = (role) => (req, res, next) => {
-    const tokenName = role === 'admin' ? 'admin_token' : 'user_token';
-    const secret = role === 'admin' ? process.env.JWT_ADMIN_SECRET : process.env.JWT_SECRET;
-    const token = req.cookies[tokenName];
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+            success: false,
+            message: 'Authentication required'
+        });
+    }
+
+    const token = authHeader.split(' ')[1];
 
     if (!token) {
         return res.status(401).json({
@@ -68,10 +83,41 @@ const verifyToken = (role) => (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, secret);
+        // Verify access token using the appropriate secret
+        const isAdmin = role === 'admin';
+        const decoded = verifyAccessToken(token, isAdmin);
+        
+        // Validate role if specified
+        if (role === 'admin' && !decoded.isAdmin) {
+            return res.status(403).json({
+                success: false,
+                message: 'Admin access required'
+            });
+        }
+        
+        // Set req.user with decoded token data (new pattern)
         req.user = decoded;
+        
+        // BACKWARD COMPATIBILITY: Set cookies so existing controllers work
+        // Controllers use req.cookies.user_token - we set it from the Bearer token
+        if (!req.cookies) {
+            req.cookies = {};
+        }
+        if (isAdmin) {
+            req.cookies.admin_token = token;
+        } else {
+            req.cookies.user_token = token;
+        }
+        
         next();
     } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({
+                success: false,
+                message: 'Token expired',
+                code: 'TOKEN_EXPIRED'
+            });
+        }
         return res.status(401).json({
             success: false,
             message: 'Invalid token'
