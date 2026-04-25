@@ -60,8 +60,7 @@ app.use(compression());
 // CORS configuration
 app.use(cors({
     origin: [
-        process.env.CLIENT_URL || "http://localhost:5173",
-        process.env.APP_URL,
+        process.env.APP_URL || "http://localhost:5173",
         "http://zelova.zapto.org",
         "https://api.cloudinary.com"
     ].filter(Boolean),
